@@ -1,0 +1,201 @@
+// Export cost & margin database. Field names stay snake_case so they match lib/types.ts one-to-one.
+// Money/weight fields are Decimal (exact); lib/db.ts converts them to numbers before they reach the UI.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ShipmentStatus {
+  quoted
+  confirmed
+  produced
+  shipped
+  completed
+
+  @@map("shipment_status")
+}
+
+enum CostType {
+  quoted
+  actual
+
+  @@map("cost_type")
+}
+
+/// Keys must match COST_STAGES in lib/types.ts.
+enum CostStage {
+  raw_material
+  factory_transport
+  sorting
+  packaging
+  pouch
+  carton
+  processing
+  port_transport
+  fob_charges
+  ocean_freight
+  other
+
+  @@map("cost_stage")
+}
+
+model Product {
+  id                         String    @id @default(uuid()) @db.Uuid
+  name                       String
+  unit                       String    @default("KG")
+  /// Export pouch size in kg, e.g. 2.5
+  standard_pack_kg           Decimal?  @db.Decimal(10, 3)
+  default_pouches_per_carton Int?
+  /// Typical % of bulk weight rejected in sorting
+  default_sorting_loss_pct   Decimal?  @db.Decimal(5, 2)
+  category                   String?
+  created_at                 DateTime  @default(now()) @db.Timestamptz(6)
+
+  rates          SupplierRate[]
+  shipment_items ShipmentItem[]
+
+  @@map("products")
+}
+
+model Supplier {
+  id         String   @id @default(uuid()) @db.Uuid
+  name       String
+  contact    String?
+  location   String?
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  rates          SupplierRate[]
+  shipment_items ShipmentItem[]
+
+  @@map("suppliers")
+}
+
+/// Append-only rate book: bulk ₹/kg at the supplier, never overwritten.
+model SupplierRate {
+  id             String   @id @default(uuid()) @db.Uuid
+  supplier_id    String   @db.Uuid
+  product_id     String   @db.Uuid
+  rate_per_kg    Decimal  @db.Decimal(14, 4)
+  moq_kg         Decimal? @db.Decimal(14, 3)
+  effective_date DateTime @default(now()) @db.Date
+  notes          String?
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+
+  supplier Supplier @relation(fields: [supplier_id], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  @@index([product_id, supplier_id, effective_date(sort: Desc)])
+  @@map("supplier_rates")
+}
+
+model Client {
+  id         String   @id @default(uuid()) @db.Uuid
+  name       String
+  country    String?
+  contact    String?
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  shipments Shipment[]
+
+  @@map("clients")
+}
+
+model Shipment {
+  id                String         @id @default(uuid()) @db.Uuid
+  code              String         @unique
+  client_id         String?        @db.Uuid
+  status            ShipmentStatus @default(quoted)
+  incoterm          String?
+  port_of_loading   String?
+  port_of_discharge String?
+  currency          String         @default("USD")
+  /// ₹ per 1 unit of `currency`, used for quoted figures
+  exchange_rate        Decimal        @db.Decimal(12, 4)
+  /// ₹ per 1 unit actually realised when paid; used for actual figures. null = not known yet (falls back to exchange_rate)
+  actual_exchange_rate Decimal?       @db.Decimal(12, 4)
+  notes             String?
+  created_at        DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime       @default(now()) @updatedAt @db.Timestamptz(6)
+
+  client  Client?          @relation(fields: [client_id], references: [id], onDelete: SetNull)
+  items   ShipmentItem[]
+  charges ShipmentCharge[]
+
+  @@map("shipments")
+}
+
+/// Port & freight costs paid for the whole shipment (FOB charges, ocean freight, other), as a total.
+/// lib/calc.ts converts to ₹ and spreads them over the shipment's packed kg, so every line carries its share by weight.
+model ShipmentCharge {
+  id            String    @id @default(uuid()) @db.Uuid
+  shipment_id   String    @db.Uuid
+  stage         CostStage
+  cost_type     CostType
+  /// In `currency`, not necessarily ₹
+  amount_total  Decimal   @default(0) @db.Decimal(14, 2)
+  currency      String    @default("INR")
+  /// ₹ per 1 `currency`. null = INR, or same currency as the shipment (then the shipment's rate is used)
+  exchange_rate Decimal?  @db.Decimal(12, 4)
+
+  shipment Shipment @relation(fields: [shipment_id], references: [id], onDelete: Cascade)
+
+  @@unique([shipment_id, stage, cost_type])
+  @@map("shipment_charges")
+}
+
+model ShipmentItem {
+  id                      String   @id @default(uuid()) @db.Uuid
+  shipment_id             String   @db.Uuid
+  product_id              String   @db.Uuid
+  supplier_id             String?  @db.Uuid
+  /// Packed export quantity in MT
+  quantity_mt             Decimal  @db.Decimal(12, 3)
+  pouch_kg                Decimal  @default(2.5) @db.Decimal(10, 3)
+  pouches_per_carton      Int?
+  sorting_loss_pct_quoted Decimal  @default(0) @db.Decimal(5, 2)
+  /// null = real loss not recorded yet; the app then uses the quoted loss
+  sorting_loss_pct_actual Decimal? @db.Decimal(5, 2)
+  created_at              DateTime @default(now()) @db.Timestamptz(6)
+
+  shipment     Shipment     @relation(fields: [shipment_id], references: [id], onDelete: Cascade)
+  product      Product      @relation(fields: [product_id], references: [id], onDelete: Restrict)
+  supplier     Supplier?    @relation(fields: [supplier_id], references: [id], onDelete: SetNull)
+  cost_entries CostEntry[]
+  quote_prices QuotePrice[]
+
+  @@index([shipment_id])
+  @@map("shipment_items")
+}
+
+/// ₹ per kg as paid: per bulk kg for raw_material / factory_transport / sorting, per packed kg otherwise.
+model CostEntry {
+  id               String    @id @default(uuid()) @db.Uuid
+  shipment_item_id String    @db.Uuid
+  stage            CostStage
+  cost_type        CostType
+  amount_per_kg    Decimal   @default(0) @db.Decimal(14, 4)
+  notes            String?
+
+  shipment_item ShipmentItem @relation(fields: [shipment_item_id], references: [id], onDelete: Cascade)
+
+  @@unique([shipment_item_id, stage, cost_type])
+  @@map("cost_entries")
+}
+
+model QuotePrice {
+  id                   String   @id @default(uuid()) @db.Uuid
+  shipment_item_id     String   @db.Uuid
+  cost_type            CostType
+  /// In the shipment's currency
+  selling_price_per_mt Decimal  @db.Decimal(14, 2)
+
+  shipment_item ShipmentItem @relation(fields: [shipment_item_id], references: [id], onDelete: Cascade)
+
+  @@unique([shipment_item_id, cost_type])
+  @@map("quote_prices")
+}

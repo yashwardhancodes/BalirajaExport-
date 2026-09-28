@@ -1,0 +1,91 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-canvas text-ink font-sans antialiased;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  /* Numbers everywhere line up in columns. */
+  table,
+  .figure {
+    font-variant-numeric: tabular-nums;
+  }
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand/40 ring-offset-1;
+  }
+}
+
+/* In the components layer so utility classes (w-24, etc.) can override these. */
+@layer components {
+  .card {
+    @apply bg-white rounded-xl border border-line shadow-card p-4 sm:p-5;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg bg-brand text-white text-sm font-medium px-4 py-2.5 sm:px-3.5 sm:py-2
+      hover:bg-brand-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg bg-white text-ink text-sm font-medium px-4 py-2.5 sm:px-3.5 sm:py-2
+      border border-line hover:bg-canvas transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center gap-1 rounded-md text-sm font-medium px-2 py-1 text-slate-600 hover:bg-canvas hover:text-ink transition-colors;
+  }
+
+  .btn-danger-ghost {
+    @apply inline-flex items-center gap-1 rounded-md text-xs font-medium px-2 py-1 text-red-600 hover:bg-red-50 transition-colors;
+  }
+
+  .input {
+    @apply w-full rounded-lg border border-line bg-white px-3 py-2.5 text-base sm:py-2 sm:text-sm text-ink placeholder:text-slate-400
+      transition-colors hover:border-slate-300 focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20
+      disabled:bg-canvas disabled:text-slate-500 disabled:cursor-not-allowed;
+  }
+
+  .label {
+    @apply block text-xs font-medium text-slate-600 mb-1;
+  }
+
+  .eyebrow {
+    @apply text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500;
+  }
+
+  .link {
+    @apply text-brand font-medium hover:text-brand-dark hover:underline underline-offset-2;
+  }
+
+  table.data {
+    @apply w-full text-sm;
+  }
+  table.data th {
+    @apply text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-500 px-3 py-2.5 border-b border-line bg-canvas/60 whitespace-nowrap;
+  }
+  table.data td {
+    @apply px-3 py-3 border-b border-line/70 align-top;
+  }
+  table.data tbody tr {
+    @apply transition-colors hover:bg-canvas/60;
+  }
+  table.data tbody tr:last-child td {
+    @apply border-b-0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
