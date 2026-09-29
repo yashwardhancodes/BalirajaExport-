@@ -11,9 +11,9 @@ import {
   listShipmentItems,
   listShipments,
 } from "@/lib/actions";
-import { CostType, Shipment } from "@/lib/types";
+import { CostType, Shipment, ShipmentType } from "@/lib/types";
 import { computeLineResult, formatINR, formatMoney, fxEffectINR, LineResult } from "@/lib/calc";
-import { EmptyState, LoadingState, marginClass, PageHeader, Panel, Pill, Stat, StatusBadge } from "@/components/ui";
+import { EmptyState, LoadingState, marginClass, PageHeader, Panel, Pill, Segmented, Stat, StatusBadge, TypeBadge } from "@/components/ui";
 
 interface Row {
   itemId: string;
@@ -58,7 +58,7 @@ function buildNextSteps(
       seen.add(`actual-${id}`);
       steps.push({ key: `actual-${id}`, text: `${r.shipment.code} has shipped: enter the actual costs`, href: `/shipments/${id}`, action: "Enter actuals" });
     }
-    if (afterShipping && !r.shipment.actual_exchange_rate && !seen.has(`fx-${id}`)) {
+    if (afterShipping && r.shipment.type === "export" && !r.shipment.actual_exchange_rate && !seen.has(`fx-${id}`)) {
       seen.add(`fx-${id}`);
       steps.push({ key: `fx-${id}`, text: `${r.shipment.code}: record the exchange rate you were paid at`, href: `/shipments/${id}`, action: "Add rate" });
     }
@@ -76,7 +76,8 @@ function buildNextSteps(
 }
 
 export default function DashboardPage() {
-  const [rows, setRows] = useState<Row[]>([]);
+  const [allRows, setRows] = useState<Row[]>([]);
+  const [typeFilter, setTypeFilter] = useState<"all" | ShipmentType>("all");
   const [nextSteps, setNextSteps] = useState<NextStep[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -136,6 +137,7 @@ export default function DashboardPage() {
 
   // All totals in ₹: each line is converted at its own shipment's rate before adding up,
   // so shipments quoted in different currencies can be summed.
+  const rows = typeFilter === "all" ? allRows : allRows.filter((r) => r.shipment.type === typeFilter);
   const shipmentCount = new Set(rows.map((r) => r.shipment.id)).size;
   // Only lines with a selling price have a margin; unpriced lines would otherwise count as a loss of their full cost.
   const pricedRows = rows.filter((r) => r.quotedPriced);
@@ -156,11 +158,23 @@ export default function DashboardPage() {
       <PageHeader
         eyebrow="Overview"
         title="Dashboard"
-        description="Quoted margin against actual margin for every shipment line. Totals are in ₹, each line converted at its own shipment's rate."
+        description="Quoted margin against actual margin for every export and domestic line. Totals are in ₹; export lines are converted at their own shipment's rate."
         actions={
-          <Link href="/shipments" className="btn">
-            New shipment
-          </Link>
+          <>
+            <Segmented
+              label="Show shipment type"
+              value={typeFilter}
+              onChange={setTypeFilter}
+              options={[
+                { value: "all", label: "All" },
+                { value: "export", label: "Export" },
+                { value: "domestic", label: "Domestic" },
+              ]}
+            />
+            <Link href="/shipments" className="btn">
+              New shipment
+            </Link>
+          </>
         }
       />
 
@@ -253,7 +267,7 @@ export default function DashboardPage() {
                         <div className="text-sm font-medium truncate">{r.clientName}</div>
                         <div className="text-xs text-slate-500">{r.productName} · {r.quantity} MT</div>
                       </div>
-                      <StatusBadge status={r.shipment.status} />
+                      <span className="inline-flex flex-wrap gap-1"><TypeBadge type={r.shipment.type} /><StatusBadge status={r.shipment.status} /></span>
                     </div>
                     <div className="mt-3 grid grid-cols-3 gap-2 border-t border-line pt-3">
                       <Stat
@@ -294,7 +308,7 @@ export default function DashboardPage() {
                       <td>
                         <div className="font-mono text-[13px] font-medium">{r.shipment.code}</div>
                         <div className="mt-1">
-                          <StatusBadge status={r.shipment.status} />
+                          <span className="inline-flex flex-wrap gap-1"><TypeBadge type={r.shipment.type} /><StatusBadge status={r.shipment.status} /></span>
                         </div>
                       </td>
                       <td>

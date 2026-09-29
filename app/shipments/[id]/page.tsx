@@ -16,6 +16,7 @@ import {
   Stat,
   STATUS_STYLE,
   SubSection,
+  TypeBadge,
   UnsavedBadge,
 } from "@/components/ui";
 import {
@@ -52,7 +53,10 @@ import {
   ShipmentCharge,
   ShipmentItem,
   ShipmentStatus,
-  STAGE_GROUPS,
+  chargesTitle,
+  ShipmentType,
+  stageGroups,
+  stageLabel,
   STAGE_LABELS,
   Supplier,
   SupplierRate,
@@ -74,7 +78,8 @@ import {
   suggestSellingPrice,
 } from "@/lib/calc";
 
-const LINE_STAGES: CostStage[] = STAGE_GROUPS.flatMap((g) => g.stages);
+// Same stage keys for export and domestic; only the labels differ.
+const LINE_STAGES: CostStage[] = stageGroups().flatMap((g) => g.stages);
 const MARGIN_PRESETS = [10, 15, 20, 25];
 
 const STATUSES: ShipmentStatus[] = ["quoted", "confirmed", "produced", "shipped", "completed"];
@@ -281,12 +286,23 @@ export default function ShipmentDetailPage() {
         <Link href="/shipments" className="btn-ghost -ml-2 text-xs">← All shipments</Link>
         <PageHeader
           eyebrow={client?.name ?? "No client"}
-          title={<span className="font-mono">{shipment.code}</span>}
+          title={
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="font-mono">{shipment.code}</span>
+              <TypeBadge type={shipment.type} />
+            </span>
+          }
           description={
             <span className="flex flex-wrap gap-x-4 gap-y-1">
-              <span>{shipment.incoterm ?? "Incoterm not set"}</span>
-              {(shipment.port_of_loading || shipment.port_of_discharge) && (
-                <span>{shipment.port_of_loading ?? "?"} → {shipment.port_of_discharge ?? "?"}</span>
+              {shipment.type === "domestic" ? (
+                <span>{shipment.delivery_location ? `Deliver to ${shipment.delivery_location}` : "Delivery location not set"}</span>
+              ) : (
+                <>
+                  <span>{shipment.incoterm ?? "Incoterm not set"}</span>
+                  {(shipment.port_of_loading || shipment.port_of_discharge) && (
+                    <span>{shipment.port_of_loading ?? "?"} → {shipment.port_of_discharge ?? "?"}</span>
+                  )}
+                </>
               )}
               <span className="figure">{items.length} product{items.length === 1 ? "" : "s"} · {+totalMT.toFixed(3)} MT packed</span>
             </span>
@@ -296,7 +312,11 @@ export default function ShipmentDetailPage() {
         <StatusStepper status={shipment.status} onChange={updateStatus} />
       </div>
 
-      <ShipmentFxCard shipment={shipment} onSaved={load} />
+      {shipment.type === "export" ? (
+        <ShipmentFxCard shipment={shipment} onSaved={load} />
+      ) : (
+        <p className="text-sm text-slate-500">Domestic shipment: all prices, costs and margins are in ₹.</p>
+      )}
 
       {quoteLocked ? (
         <p className="text-sm text-slate-500">
@@ -390,6 +410,7 @@ export default function ShipmentDetailPage() {
               status={shipment.status}
               costEntries={costEntries.filter((c) => c.shipment_item_id === item.id)}
               quotePrices={quotePrices.filter((q) => q.shipment_item_id === item.id)}
+              shipmentType={shipment.type}
               chargesPerKg={{
                 quoted: shipmentChargesPerKg(draftsToCharges(chargeDrafts, shipment.currency), "quoted", items, shipment),
                 actual: shipmentChargesPerKg(draftsToCharges(chargeDrafts, shipment.currency), "actual", items, shipment),
@@ -443,6 +464,7 @@ function ItemCard({
   status,
   costEntries,
   quotePrices,
+  shipmentType,
   chargesPerKg,
   chargesUnsaved,
   onDirtyChange,
@@ -458,6 +480,7 @@ function ItemCard({
   status: ShipmentStatus;
   costEntries: CostEntry[];
   quotePrices: QuotePrice[];
+  shipmentType: ShipmentType;
   chargesPerKg: Record<CostType, ChargesPerKg>;
   chargesUnsaved: Record<CostType, boolean>;
   onDirtyChange: (itemId: string, dirty: boolean) => void;
@@ -642,7 +665,7 @@ function ItemCard({
               <p className="text-[11px] text-slate-500">Same for quoted and actual.</p>
             </SubSection>
 
-            {STAGE_GROUPS.map((group, groupIdx) => (
+            {stageGroups(shipmentType).map((group, groupIdx) => (
               <SubSection key={group.title} title={group.title}>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {groupIdx === 0 && (
@@ -670,7 +693,7 @@ function ItemCard({
                     return (
                       <Field
                         key={stage}
-                        label={STAGE_LABELS[stage]}
+                        label={stageLabel(stage, shipmentType)}
                         htmlFor={`${item.id}-${stage}`}
                         hint={grossedUp ? <span className="figure">= {formatINR(perPackedKg(stage, Number(raw), draftLossPct))} per packed kg</span> : undefined}
                       >
@@ -694,21 +717,21 @@ function ItemCard({
               </SubSection>
             ))}
 
-            <SubSection title="Port & freight · share of shipment totals">
+            <SubSection title={`${chargesTitle(shipmentType)} · share of shipment totals`}>
               {sharedTotalPerKg > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {SHIPMENT_CHARGE_STAGES.filter((s) => (sharedPerKg[s] ?? 0) > 0).map((s) => (
                     <span key={s} className="inline-flex items-baseline gap-1.5 rounded-md bg-canvas px-2.5 py-1 text-xs">
-                      <span className="text-slate-500">{STAGE_LABELS[s]}</span>
+                      <span className="text-slate-500">{stageLabel(s, shipmentType)}</span>
                       <span className="figure font-medium">{formatINR(sharedPerKg[s] ?? 0)}/kg</span>
                     </span>
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-amber-700">No {costType} port &amp; freight yet. Enter the totals in the shipment card above.</p>
+                <p className="text-xs text-amber-700">No {costType} {chargesTitle(shipmentType).toLowerCase()} yet. Enter the totals in the shipment card above.</p>
               )}
               {chargesUnsaved[costType] && (
-                <p className="text-xs text-amber-700">Includes port &amp; freight typed above but not saved yet.</p>
+                <p className="text-xs text-amber-700">Includes {chargesTitle(shipmentType).toLowerCase()} typed above but not saved yet.</p>
               )}
             </SubSection>
           </div>
@@ -721,7 +744,7 @@ function ItemCard({
                   <Stat size="lg" label="Per packed kg" value={formatINR(breakdown.totalPerKgINR)} />
                   <div className="grid grid-cols-2 gap-3">
                     <Stat label="Per MT" value={formatINR(breakdown.totalPerMTINR)} />
-                    <Stat label={`Per MT (${currency})`} value={formatMoney(breakdown.totalPerMTFx, currency)} />
+                    {shipmentType === "export" && <Stat label={`Per MT (${currency})`} value={formatMoney(breakdown.totalPerMTFx, currency)} />}
                   </div>
                   <Stat
                     label={`Whole line, ${item.quantity_mt} MT`}
@@ -730,8 +753,8 @@ function ItemCard({
                   />
                   <div className="text-[11px] text-slate-500 border-t border-line pt-2 space-y-0.5 figure">
                     <div>Sorting loss ({draftLossPct}%) adds {formatINR(lossCostPerKg)}/kg</div>
-                    <div>Port &amp; freight {formatINR(sharedTotalPerKg)}/kg</div>
-                    <div>At ₹{exchangeRate} per {currency}</div>
+                    <div>{chargesTitle(shipmentType)} {formatINR(sharedTotalPerKg)}/kg</div>
+                    {shipmentType === "export" && <div>At ₹{exchangeRate} per {currency}</div>}
                   </div>
                 </div>
               </SubSection>
@@ -824,7 +847,7 @@ function ItemCard({
               const pct = breakdown.totalPerKgINR ? (value / breakdown.totalPerKgINR) * 100 : 0;
               return (
                 <div key={stage} className="grid grid-cols-[minmax(0,9rem)_minmax(0,1fr)_4.5rem_2.5rem] sm:grid-cols-[12rem_minmax(0,1fr)_5rem_3rem] items-center gap-3 text-xs">
-                  <div className="truncate text-slate-600">{STAGE_LABELS[stage]}</div>
+                  <div className="truncate text-slate-600">{stageLabel(stage, shipmentType)}</div>
                   <div className="h-2 rounded-full bg-canvas overflow-hidden">
                     <div className="h-2 rounded-full bg-brand" style={{ width: `${pct}%` }} />
                   </div>
@@ -1025,16 +1048,18 @@ function ShipmentChargesCard({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-0.5 min-w-0">
           <h2 className="text-base font-semibold flex flex-wrap items-center gap-2">
-            Port &amp; freight · whole shipment
+            {chargesTitle(shipment.type)} · whole shipment
             {(allDirty.quoted || allDirty.actual) && <UnsavedBadge />}
           </h2>
           <div className="text-xs text-slate-500 max-w-2xl">
-            Enter the full amount paid, in the currency you were billed — it&apos;s converted to ₹ and divided over{" "}
+            {shipment.type === "domestic"
+              ? "Enter the full amount paid in ₹. It's divided over "
+              : "Enter the full amount paid, in the currency you were billed. It's converted to ₹ and divided over "}
             {packedKg.toLocaleString("en-IN")} kg packed across {items.length} line{items.length === 1 ? "" : "s"}.
           </div>
         </div>
         <Segmented
-          label="Port and freight figures to show"
+          label="Charges to show"
           value={costType}
           onChange={setCostType}
           options={[
@@ -1050,18 +1075,20 @@ function ShipmentChargesCard({
           const ownRate = needsOwnRate(d.currency);
           return (
             <div key={stage} className="space-y-1">
-              <label className="label" htmlFor={`charge-${stage}-amount`}>{STAGE_LABELS[stage]} · total bill</label>
+              <label className="label" htmlFor={`charge-${stage}-amount`}>{stageLabel(stage, shipment.type)} · total bill</label>
               <div className="flex gap-2">
+                {shipment.type === "export" && (
                 <select
                   className="input w-24 shrink-0 px-2 font-mono"
                   value={d.currency}
                   onChange={(e) => update(stage, { currency: e.target.value })}
-                  aria-label={`${STAGE_LABELS[stage]} currency`}
+                  aria-label={`${stageLabel(stage, shipment.type)} currency`}
                 >
                   {currencyOptions.map((c) => (
                     <option key={c} value={c}>{c}</option>
                   ))}
                 </select>
+                )}
                 <input
                   id={`charge-${stage}-amount`}
                   className="input min-w-0 flex-1 figure"
@@ -1071,7 +1098,7 @@ function ShipmentChargesCard({
                   placeholder="Amount"
                   value={d.amount}
                   onChange={(e) => update(stage, { amount: e.target.value })}
-                  aria-label={`${STAGE_LABELS[stage]} amount`}
+                  aria-label={`${stageLabel(stage, shipment.type)} amount`}
                 />
               </div>
               {ownRate && (
@@ -1104,18 +1131,18 @@ function ShipmentChargesCard({
       {readOnly && <LockedNote status={shipment.status} />}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-3 border-t border-line">
         <button id="save-charges" className="btn" disabled={readOnly || saving || !dirty || Boolean(missingRate)}>
-          {saving ? "Saving…" : `Save ${costType} port & freight`}
+          {saving ? "Saving…" : `Save ${costType} ${chargesTitle(shipment.type).toLowerCase()}`}
         </button>
         <div className="text-sm">
           <span className="text-slate-500">Total {costType}</span> <span className="figure font-semibold">{formatINR(draftTotal)}</span>
           {packedKg > 0 && <span className="text-slate-500"> = {formatINR(draftTotal / packedKg)}/kg</span>}
         </div>
         {missingRate ? (
-          <span className="text-xs text-amber-700">Enter the exchange rate for {STAGE_LABELS[missingRate]}.</span>
+          <span className="text-xs text-amber-700">Enter the exchange rate for {stageLabel(missingRate, shipment.type)}.</span>
         ) : dirty ? (
-          <span className="text-xs text-amber-700">Unsaved — already included in the product prices below, but not stored until you save.</span>
+          <span className="text-xs text-amber-700">Unsaved. Already included in the product prices below, but not stored until you save.</span>
         ) : (
-          <span className="text-xs text-slate-500">All {costType} port &amp; freight saved.</span>
+          <span className="text-xs text-slate-500">All {costType} {chargesTitle(shipment.type).toLowerCase()} saved.</span>
         )}
         {allDirty[costType === "quoted" ? "actual" : "quoted"] && (
           <span className="text-xs text-amber-700">

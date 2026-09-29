@@ -1,7 +1,7 @@
 // Shared building blocks so every page has the same header, sections, badges and fields.
 
 import type { ReactNode } from "react";
-import type { ShipmentStatus } from "@/lib/types";
+import type { ShipmentStatus, ShipmentType } from "@/lib/types";
 
 export function PageHeader({
   eyebrow,
@@ -106,6 +106,15 @@ export function StatusBadge({ status }: { status: ShipmentStatus }) {
     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium capitalize ring-1 ring-inset ${STATUS_STYLE[status]}`}>
       {status}
     </span>
+  );
+}
+
+/** Export vs domestic, shown next to every shipment code. */
+export function TypeBadge({ type }: { type: ShipmentType }) {
+  return type === "domestic" ? (
+    <span className="inline-flex items-center rounded-md bg-bronze-soft px-1.5 py-0.5 text-[11px] font-medium text-bronze">Domestic</span>
+  ) : (
+    <span className="inline-flex items-center rounded-md bg-brand-soft px-1.5 py-0.5 text-[11px] font-medium text-brand-dark">Export</span>
   );
 }
 

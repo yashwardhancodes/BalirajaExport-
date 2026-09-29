@@ -18,7 +18,7 @@ import type {
   Supplier,
   SupplierRate,
 } from "@/lib/types";
-import { isQuoteLocked, SHIPMENT_CHARGE_STAGES } from "@/lib/types";
+import { BASE_CURRENCY, isQuoteLocked, SHIPMENT_CHARGE_STAGES, type ShipmentType } from "@/lib/types";
 
 // ---------- Products ----------
 
@@ -104,14 +104,22 @@ export async function getShipment(id: string): Promise<Shipment | null> {
 
 export async function createShipment(data: {
   code: string;
+  type: ShipmentType;
   client_id: string | null;
   incoterm: string | null;
   port_of_loading: string | null;
   port_of_discharge: string | null;
+  delivery_location: string | null;
   currency: string;
   exchange_rate: number;
 }): Promise<string> {
-  const { id } = await prisma.shipment.create({ data: { ...data, currency: data.currency.trim().toUpperCase() } });
+  // Domestic sales are priced in rupees: no currency, exchange rate or ports.
+  const fields =
+    data.type === "domestic"
+      ? { ...data, currency: BASE_CURRENCY, exchange_rate: 1, incoterm: null, port_of_loading: null, port_of_discharge: null }
+      : { ...data, currency: data.currency.trim().toUpperCase(), delivery_location: null };
+  if (fields.type === "export" && !(fields.exchange_rate > 0)) throw new Error("Enter the quoted exchange rate");
+  const { id } = await prisma.shipment.create({ data: fields });
   return id;
 }
 
@@ -148,6 +156,7 @@ export async function updateShipmentFx(
     throw new Error("Realised exchange rate must be above 0, or left blank");
   }
   const current = await prisma.shipment.findUniqueOrThrow({ where: { id } });
+  if (current.type === "domestic") throw new Error("Domestic shipments are priced in ₹ and have no exchange rate");
   if (currency !== current.currency || data.exchange_rate !== current.exchange_rate.toNumber()) {
     await assertQuoteEditable(id);
   }

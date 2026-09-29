@@ -20,6 +20,14 @@ enum ShipmentStatus {
   @@map("shipment_status")
 }
 
+/// Export: priced in the client currency, shipped via Nhava Sheva. Domestic: priced in ₹, delivered by truck.
+enum ShipmentType {
+  export
+  domestic
+
+  @@map("shipment_type")
+}
+
 enum CostType {
   quoted
   actual
@@ -108,11 +116,14 @@ model Client {
 model Shipment {
   id                String         @id @default(uuid()) @db.Uuid
   code              String         @unique
+  type              ShipmentType   @default(export)
   client_id         String?        @db.Uuid
   status            ShipmentStatus @default(quoted)
   incoterm          String?
   port_of_loading   String?
   port_of_discharge String?
+  /// Domestic only: where the goods are delivered (city / warehouse)
+  delivery_location String?
   currency          String         @default("USD")
   /// ₹ per 1 unit of `currency`, used for quoted figures
   exchange_rate        Decimal        @db.Decimal(12, 4)

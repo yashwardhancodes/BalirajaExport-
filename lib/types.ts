@@ -1,5 +1,10 @@
 export type CostType = "quoted" | "actual";
 
+/** Export: priced in the client currency, shipped via Nhava Sheva. Domestic: priced in ₹, delivered by truck. */
+export type ShipmentType = "export" | "domestic";
+export const SHIPMENT_TYPES: ShipmentType[] = ["export", "domestic"];
+export const SHIPMENT_TYPE_LABELS: Record<ShipmentType, string> = { export: "Export", domestic: "Domestic" };
+
 export type ShipmentStatus =
   | "quoted"
   | "confirmed"
@@ -53,14 +58,38 @@ export const STAGE_LABELS: Record<CostStage, string> = {
  */
 export const BULK_WEIGHT_STAGES: ReadonlySet<CostStage> = new Set<CostStage>(["raw_material", "factory_transport", "sorting"]);
 
+/**
+ * Domestic shipments reuse the same stage keys (so costing works identically) but the last leg goes to the
+ * customer instead of the port, and the whole-shipment charges are truck delivery rather than port & sea freight.
+ */
+const DOMESTIC_STAGE_LABELS: Partial<Record<CostStage, string>> = {
+  carton: "Carton",
+  port_transport: "Transport: hub → customer",
+  fob_charges: "Loading & handling",
+  ocean_freight: "Truck hire (whole load)",
+  other: "Other delivery charges",
+};
+
+export function stageLabel(stage: CostStage, type: ShipmentType = "export"): string {
+  return (type === "domestic" && DOMESTIC_STAGE_LABELS[stage]) || STAGE_LABELS[stage];
+}
+
 /** Entered per shipment line, in ₹/kg. */
-export const STAGE_GROUPS: { title: string; stages: CostStage[] }[] = [
-  { title: "Bulk: supplier → hub → sorting (₹/kg of bulk)", stages: ["raw_material", "factory_transport", "sorting"] },
-  {
-    title: "Export packing at hub → Nhava Sheva (₹/kg packed)",
-    stages: ["packaging", "pouch", "carton", "processing", "port_transport"],
-  },
-];
+export function stageGroups(type: ShipmentType = "export"): { title: string; stages: CostStage[] }[] {
+  return [
+    { title: "Bulk: supplier → hub → sorting (₹/kg of bulk)", stages: ["raw_material", "factory_transport", "sorting"] },
+    {
+      title: type === "domestic" ? "Packing at hub → customer (₹/kg packed)" : "Export packing at hub → Nhava Sheva (₹/kg packed)",
+      stages: ["packaging", "pouch", "carton", "processing", "port_transport"],
+    },
+  ];
+}
+export const STAGE_GROUPS = stageGroups("export");
+
+/** Title for the whole-shipment charges card. */
+export function chargesTitle(type: ShipmentType = "export"): string {
+  return type === "domestic" ? "Delivery charges" : "Port & freight";
+}
 
 /** Paid once for the whole shipment as a ₹ total, then spread over its packed kg (see shipment_charges). */
 export const SHIPMENT_CHARGE_STAGES: CostStage[] = ["fob_charges", "ocean_freight", "other"];
@@ -108,12 +137,14 @@ export interface Client {
 export interface Shipment {
   id: string;
   code: string;
+  type: ShipmentType;
   client_id: string | null;
   status: ShipmentStatus;
   incoterm: string | null;
   port_of_loading: string | null;
   port_of_discharge: string | null;
-  currency: string;
+  delivery_location: string | null; // domestic only
+  currency: string; // always INR for domestic
   exchange_rate: number; // ₹ per 1 unit of currency — quoted figures
   actual_exchange_rate: number | null; // ₹ per 1 unit realised — actual figures; null = not known yet
   notes: string | null;
