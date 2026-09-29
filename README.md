@@ -43,12 +43,16 @@ bug in the old spreadsheet (FOB/CFR/USD figures not matching).
 3. **Changing the schema:** edit `prisma/schema.prisma`, then `npm run db:migrate:dev -- --name what_changed`
    to generate and apply a new migration.
 
-4. **Lock it down before it's live.** There is no login yet. Anyone who can reach the app can read
-   and change every figure. Before exposing it to the internet, add authentication (e.g. Auth.js with
-   a single allowed user) and check it at the top of every action in `lib/actions.ts`.
+4. **Login.** `middleware.ts` puts the whole app behind the browser's login prompt using
+   `APP_USERNAME` / `APP_PASSWORD`. Locally, leave `APP_PASSWORD` unset to skip it; in production the
+   app refuses to serve anything until it's set. `/api/health` stays open for uptime checks.
 
-5. **Deploy.** Given your VPS preference: `npm run build && npm run db:migrate && npm run start`
-   behind nginx/PM2 like your other Node apps, with PostgreSQL on the same VPS.
+5. **Deploy.** Pages and server code are one Next.js app and deploy together. Set `DATABASE_URL`,
+   `DIRECT_URL` and `APP_PASSWORD` in the host's environment variables; each deploy applies pending
+   migrations before building.
+   - **Vercel (recommended):** import the GitHub repo. `vercel.json` runs the server code in Mumbai
+     (`bom1`), next to the Supabase database.
+   - **Render:** New → Blueprint → this repo; `render.yaml` sets up a web service in Singapore.
 
 ## Costing flow (bulk → packed export goods)
 
