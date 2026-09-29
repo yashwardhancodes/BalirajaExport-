@@ -1,0 +1,30 @@
+# Render Blueprint: Render → New → Blueprint → pick this repo, and it sets up the service below.
+# Secrets (marked sync: false) are asked for in the dashboard during setup; they never live in this file.
+services:
+  - type: web
+    name: baliraja-export
+    runtime: node
+    # Closest Render region to the Supabase database in Mumbai (ap-south-1).
+    region: singapore
+    # "free" sleeps after 15 minutes idle (first visit then takes ~1 minute). "starter" stays awake.
+    plan: free
+    branch: main
+    # Install → apply any new database migrations → build.
+    buildCommand: npm ci && npx prisma migrate deploy && npm run build
+    startCommand: npm run start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # App runtime: Supabase transaction pooler (port 6543).
+      - key: DATABASE_URL
+        sync: false
+      # Migrations: Supabase session pooler (port 5432).
+      - key: DIRECT_URL
+        sync: false
+      # Login for the whole app (browser prompt).
+      - key: APP_USERNAME
+        value: baliraja
+      - key: APP_PASSWORD
+        sync: false
