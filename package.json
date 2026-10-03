@@ -35,5 +35,9 @@
   },
   "engines": {
     "node": ">=20.19"
+  },
+  "allowScripts": {
+    "prisma": true,
+    "@prisma/engines": true
   }
 }
